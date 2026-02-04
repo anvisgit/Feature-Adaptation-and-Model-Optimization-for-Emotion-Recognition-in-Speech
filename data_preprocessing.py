@@ -11,14 +11,14 @@ from tqdm import tqdm
 logger = logging.getLogger(__name__)
 
 def add_noise(data):
-    #Add random white noise to audio"
+    #Add random white noise to audio
     noise_amp=0.035*np.amax(data)*np.random.uniform()
     data+=np.random.normal(size=data.shape[0])*noise_amp
 def time_strech(data, rate=0.8):
-    #"increases/decreases duration while maintaining the pitch.(in this case, decreasing)"
+    #increases/decreases duration while maintaining the pitch.(in this case, decreasing)
     return librosa.effects.time_stretch(data, rate=rate)
 def pitch_shift(data,sr,n_steps=0.7):
-    #initially streches the time, works on the pitch and resamples it, essentially the time duration remains the same. sr=> audio sample per second; n_steps=> number of octaves"
+    #initially streches the time, works on the pitch and resamples it, essentially the time duration remains the same. sr=> audio sample per second; n_steps=> number of octaves
     return librosa.effects.pitch_shift(data, sr=sr, n_steps=n_steps)
 def extract_features(data,sr):
     #zcr
@@ -27,7 +27,7 @@ def extract_features(data,sr):
     result = np.hstack((result, zcr)) #horizontal stack array
     #chroma_stft
     stft=np.abs(librosa.stft(data))
-    chroma=np.mean(librosa.feature.chroma_stft(S=stft,sr=sr)T,axis=0)
+    chroma=np.mean(librosa.feature.chroma_stft(S=stft,sr=sr).T,axis=0)
     result=np.hstack((result,chroma))
     
     #mfcc

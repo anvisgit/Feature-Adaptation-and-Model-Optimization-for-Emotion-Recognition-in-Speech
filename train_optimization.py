@@ -9,9 +9,9 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from sklearn.utils import class_weight
 import tensorflow as tf
 import config as cfg
-import data_processing as dp 
+import data_preprocessing as dp 
 import models 
-import visualizations as v
+import visualization as v
 import logging 
 
 logger = logging.getLogger(__name__)
@@ -28,85 +28,85 @@ def prepare_data():
     le = LabelEncoder()
     y = le.fit_transform(y)
     
-    x_temp, x_test, y_temp, y_test = train_test_split(
+    tempx, testx, tempy, testy = train_test_split(
         x, y, test_size=cfg.TEST_SIZE, random_state=cfg.RANDOM_SEED, stratify=y
     )
     
-    x_train, x_val, y_train, y_val = train_test_split(
-        x_temp, y_temp, test_size=cfg.VALIDATION_SPLIT / (1 - cfg.TEST_SIZE), 
-        random_state=cfg.RANDOM_SEED, stratify=y_temp
+    trainx, valx, trainy, valy = train_test_split(
+        tempx, tempy, test_size=cfg.VALIDATION_SPLIT / (1 - cfg.TEST_SIZE), 
+        random_state=cfg.RANDOM_SEED, stratify=tempy
     )
     
     sc = StandardScaler()
-    x_train = sc.fit_transform(x_train)
-    x_val = sc.transform(x_val)
-    x_test = sc.transform(x_test)
+    trainx = sc.fit_transform(trainx)
+    valx = sc.transform(valx)
+    testx = sc.transform(testx)
     
     joblib.dump(sc, os.path.join(cfg.MODELS_PATH, 'scaler.pkl'))
     joblib.dump(le, os.path.join(cfg.MODELS_PATH, 'label_encoder.pkl'))
     
-    logger.info(f"Data split. Train: {x_train.shape}, Val: {x_val.shape}, Test: {x_test.shape}")
+    logger.info(f"Data split. Train: {trainx.shape}, Val: {valx.shape}, Test: {testx.shape}")
     logger.info(f"Classes encoded: {list(zip(range(len(le.classes_)), le.classes_))}")
 
     class_weights = class_weight.compute_class_weight(
         'balanced',
-        classes=np.unique(y_train),
-        y=y_train
+        classes=np.unique(trainy),
+        y=trainy
     )
     class_weight_dict = dict(enumerate(class_weights))
     logger.info(f"Class weights: {class_weight_dict}")
 
-    return x_train, x_val, x_test, y_train, y_val, y_test, le, class_weight_dict
+    return trainx, valx, testx, trainy, valy, testy, le, class_weight_dict
 
 def reshape1(x):
     return x.reshape(x.shape[0], x.shape[1], 1)
 
 def evaluate():
-    x_train_2d, x_val_2d, x_test_2d, y_train, y_val, y_test, le, class_weights = prepare_data()
-    num = len(np.unique(y_train))
-    input_shape_2d = (x_train_2d.shape[1],)
+    trainx2d, valx2d, testx2d, trainy, valy, testy, le, class_weights = prepare_data()
+    num = len(np.unique(trainy))
+    input_shape_2d = (trainx2d.shape[1],)
     
-    x_train_3d = reshape1(x_train_2d)
-    x_val_3d = reshape1(x_val_2d)
-    x_test_3d = reshape1(x_test_2d)
-    input_shape_3d = (x_train_3d.shape[1], 1)
+    trainx3d = reshape1(trainx2d)
+    valx3d = reshape1(valx2d)
+    testx3d = reshape1(testx2d)
+    input_shape_3d = (trainx3d.shape[1], 1)
     
-    logger.info(f"Data Prepared. 2D Shape: {x_train_2d.shape}, 3D Shape: {x_train_3d.shape}")
+    logger.info(f"Data Prepared. 2D Shape: {trainx2d.shape}, 3D Shape: {trainx3d.shape}")
     
     model_configure = [
         {
             'name': 'MLP',
             'builder': models.create_mlp_model,
-            'train_data': (x_train_2d, y_train),
-            'val_data': (x_val_2d, y_val),
-            'test_data': (x_test_2d, y_test),
+            'train_data': (trainx2d, trainy),
+            'val_data': (valx2d, valy),
+            'test_data': (testx2d, testy),
             'input_shape': input_shape_2d,
             'params': {'num_units': 512, 'dropout_rate': 0.4, 'num_layers': 3, 'learning_rate': 0.0005}
         },
         {
             'name': 'CNN_1D',
             'builder': models.create_cnn1d_model,
-            'train_data': (x_train_3d, y_train),
-            'val_data': (x_val_3d, y_val),
-            'test_data': (x_test_3d, y_test),
+            'train_data': (trainx3d, trainy),
+            'val_data': (valx3d, valy),
+            'test_data': (testx3d, testy),
             'input_shape': input_shape_3d,
             'params': {'filters': 128, 'kernel_size': 5, 'dropout_rate': 0.4, 'learning_rate': 0.0005}
         },
         {
             'name': 'LSTM',
             'builder': models.create_lstm_model,
-            'train_data': (x_train_3d, y_train),
-            'val_data': (x_val_3d, y_val),
-            'test_data': (x_test_3d, y_test),
+            'train_data': (trainx3d, trainy),
+            'val_data': (valx3d, valy),
+            'test_data': (testx3d, testy),
             'input_shape': input_shape_3d,
             'params': {'units': 256, 'dropout_rate': 0.4, 'learning_rate': 0.0005}
         },
         {
             'name': 'Hybrid_CNN_LSTM',
             'builder': models.create_hybrid_model,
-            'train_data': (x_train_3d, y_train),
-            'val_data': (x_val_3d, y_val),
-            'test_data': (x_test_3d, y_test),
+            'train_data': (trainx3d, trainy),
+            'val_data': (valx3d, valy),
+            'test_data': (testx3d, testy),
             'input_shape': input_shape_3d,
             'params': {'filters': 128, 'lstm_units': 128, 'dropout_rate': 0.5, 'learning_rate': 0.0003}
         }
@@ -115,6 +115,9 @@ def evaluate():
     results = []
     all_histories = {}
     log_file_path = os.path.join(cfg.RESULTS_PATH, 'experiment_log.txt')
+    testy = None
+    predy = None
+    le_classes = None
     
     with open(log_file_path, 'w') as log_f:
         log_f.write("Model Training Results\n")
@@ -153,12 +156,12 @@ def evaluate():
                 )
             ]
             
-            x_train, y_train_data = c['train_data']
-            x_val, y_val_data = c['val_data']
+            trainx, trainydata = c['train_data']
+            valx, valydata = c['val_data']
             
             history = model.fit(
-                x_train, y_train_data,
-                validation_data=(x_val, y_val_data),
+                trainx, trainydata,
+                validation_data=(valx, valydata),
                 epochs=cfg.EPOCHS, 
                 batch_size=cfg.BATCH_SIZE, 
                 callbacks=callbacks,
@@ -173,15 +176,17 @@ def evaluate():
             model.save(model_path)
             log_f.write(f"Saved to: {model_path}\n")
 
-            x_test, y_test_data = c['test_data']
-            loss, acc = model.evaluate(x_test, y_test_data, verbose=0)
-            y_pred_probab = model.predict(x_test)
-            y_pred = np.argmax(y_pred_probab, axis=1)
+            testx, testydata = c['test_data']
+            loss, acc = model.evaluate(testx, testydata, verbose=0)
+            predprobab = model.predict(testx)
+            predy = np.argmax(predprobab, axis=1)
+            testy = testydata
+            le_classes = le.classes_
             
-            report = classification_report(y_test_data, y_pred, target_names=le.classes_)
-            precision = precision_score(y_test_data, y_pred, average='weighted')
-            recall = recall_score(y_test_data, y_pred, average='weighted')
-            f1 = f1_score(y_test_data, y_pred, average='weighted')
+            report = classification_report(testydata, predy, target_names=le.classes_)
+            precision = precision_score(testydata, predy, average='weighted')
+            recall = recall_score(testydata, predy, average='weighted')
+            f1 = f1_score(testydata, predy, average='weighted')
 
             log_f.write(f"  Test Accuracy: {acc:.4f}\n")
             log_f.write(f"  Precision: {precision:.4f}\n")
@@ -202,9 +207,9 @@ def evaluate():
             })
 
             v.plot_training_history(history, name)
-            v.plot_confusion_matrix(y_test_data, y_pred, le.classes_, name)
-            v.plot_roc_curves(y_test_data, y_pred_probab, le.classes_, name)
-            v.plot_tsne(model, x_test, y_test_data, le.classes_, name)
+            v.plot_confusion_matrix(testydata, predy, le.classes_, name)
+            v.plot_roc_curves(testydata, predprobab, le.classes_, name)
+            v.plot_tsne(model, testx, testydata, le.classes_, name)
             
             log_f.write("-" * 80 + "\n\n")
 
@@ -215,7 +220,7 @@ def evaluate():
     v.plot_model_comparison(results_df)
     v.plot_all_training_comparison(all_histories)
     v.plot_metrics_radar(results_df)
-    v.plot_class_performance(y_test, y_pred, le.classes_)
+    v.plot_class_performance(testy, predy, le_classes)
 
     with open(os.path.join(cfg.RESULTS_PATH, 'research_justification.txt'), 'w') as f:
         f.write("# Speech Emotion Recognition - Research Justification\n\n")

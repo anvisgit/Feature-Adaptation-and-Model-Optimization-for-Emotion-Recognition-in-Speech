@@ -11,44 +11,47 @@ from tqdm import tqdm
 logger = logging.getLogger(__name__)
 
 def add_noise(data):
-    #Add random white noise to audio"
-    noise_amp=0.035*np.amax(data)*np.random.uniform()
-    data+=np.random.normal(size=data.shape[0])*noise_amp
-def time_strech(data, rate=0.8):
-    #"increases/decreases duration while maintaining the pitch.(in this case, decreasing)"
+    # Add random white noise to audio
+    noise_factor = 0.035 * np.amax(data) * np.random.uniform()
+    data += np.random.normal(size=data.shape[0]) * noise_factor
+    return data
+def time_stretch(data, rate=0.8):
+    # Increases/decreases duration while maintaining the pitch (in this case, decreasing)
     return librosa.effects.time_stretch(data, rate=rate)
-def pitch_shift(data,sr,n_steps=0.7):
-    #initially streches the time, works on the pitch and resamples it, essentially the time duration remains the same. sr=> audio sample per second; n_steps=> number of octaves"
+def pitch_shift(data, sr, n_steps=0.7):
+    # Initially stretches the time, works on the pitch and resamples it, essentially the time duration remains the same. sr=> audio sample per second; n_steps=> number of octaves
     return librosa.effects.pitch_shift(data, sr=sr, n_steps=n_steps)
-def extract_features(data,sr):
-    #zcr
-    result=np.array([])
-    zcr=np.mean(librosa.feature.zero_crossing_rate(y=data).T, axis=0)
-    result = np.hstack((result, zcr)) #horizontal stack array
-    #chroma_stft
-    stft=np.abs(librosa.stft(data))
-    chroma=np.mean(librosa.feature.chroma_stft(S=stft,sr=sr)T,axis=0)
-    result=np.hstack((result,chroma))
+def extract_features(data, sr):
+    # Zero crossing rate
+    result = np.array([])
+    zcr = np.mean(librosa.feature.zero_crossing_rate(y=data).T, axis=0)
+    result = np.hstack((result, zcr))
     
-    #mfcc
+    # Chroma STFT
+    stft = np.abs(librosa.stft(data))
+    chroma = np.mean(librosa.feature.chroma_stft(S=stft, sr=sr).T, axis=0)
+    result = np.hstack((result, chroma))
+    
+    # MFCC
     mfcc = np.mean(librosa.feature.mfcc(y=data, sr=sr, n_mfcc=config.N_MFCC).T, axis=0)
     result = np.hstack((result, mfcc))
-    #rms
+    
+    # RMS
     rms = np.mean(librosa.feature.rms(y=data).T, axis=0)
     result = np.hstack((result, rms))
-    #mel spectrogram 
+    
+    # Mel spectrogram
     mel = np.mean(librosa.feature.melspectrogram(y=data, sr=sr).T, axis=0)
     result = np.hstack((result, mel))
     
     return result
 def get_features(path):
-    data,sr=librosa.load(path, duration=config.DURATION,offset=0.6)
+    data, sr = librosa.load(path, duration=config.DURATION, offset=0.6)
     res1 = extract_features(data, sr)
     feature_list = [res1]
 
-
     if config.AUGMENT_NOISE:
-        noise_data = add_noise(data)
+        noise_data = add_noise(data.copy())
         res2 = extract_features(noise_data, sr)
         feature_list.append(res2)
         
@@ -56,7 +59,8 @@ def get_features(path):
         new_data = pitch_shift(time_stretch(data), sr)
         res3 = extract_features(new_data, sr)
         feature_list.append(res3)
-        return np.array(feature_list)
+    
+    return np.array(feature_list)
 
 
 def load_data(data_dir=config.DATA_PATH):

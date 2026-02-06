@@ -11,47 +11,53 @@ from tqdm import tqdm
 logger = logging.getLogger(__name__)
 
 def add_noise(data):
-    # Add random white noise to audio
-    noise_factor = 0.035 * np.amax(data) * np.random.uniform()
-    data += np.random.normal(size=data.shape[0]) * noise_factor
-    return data
-def time_stretch(data, rate=0.8):
-    # Increases/decreases duration while maintaining the pitch (in this case, decreasing)
+    noise_amp = config.NOISE_AMPLITUDE_FACTOR * np.amax(data) * np.random.uniform()
+    augmented = data + np.random.normal(size=data.shape[0]) * noise_amp
+    return augmented
+
+def time_stretch(data, rate=None):
+    if rate is None:
+        rate = config.TIME_STRETCH_RATE
     return librosa.effects.time_stretch(data, rate=rate)
-def pitch_shift(data, sr, n_steps=0.7):
-    # Initially stretches the time, works on the pitch and resamples it, essentially the time duration remains the same. sr=> audio sample per second; n_steps=> number of octaves
+
+def pitch_shift(data, sr, n_steps=None):
+    if n_steps is None:
+        n_steps = config.PITCH_SHIFT_STEPS
     return librosa.effects.pitch_shift(data, sr=sr, n_steps=n_steps)
+
 def extract_features(data, sr):
-    # Zero crossing rate
     result = np.array([])
+    
     zcr = np.mean(librosa.feature.zero_crossing_rate(y=data).T, axis=0)
     result = np.hstack((result, zcr))
     
-    # Chroma STFT
-    stft = np.abs(librosa.stft(data))
+    stft = np.abs(librosa.stft(data, n_fft=config.N_FFT, hop_length=config.HOP_LENGTH))
     chroma = np.mean(librosa.feature.chroma_stft(S=stft, sr=sr).T, axis=0)
     result = np.hstack((result, chroma))
     
-    # MFCC
     mfcc = np.mean(librosa.feature.mfcc(y=data, sr=sr, n_mfcc=config.N_MFCC).T, axis=0)
     result = np.hstack((result, mfcc))
     
-    # RMS
     rms = np.mean(librosa.feature.rms(y=data).T, axis=0)
     result = np.hstack((result, rms))
     
-    # Mel spectrogram
     mel = np.mean(librosa.feature.melspectrogram(y=data, sr=sr).T, axis=0)
     result = np.hstack((result, mel))
     
     return result
+
 def get_features(path):
-    data, sr = librosa.load(path, duration=config.DURATION, offset=0.6)
+    try:
+        data, sr = librosa.load(path, duration=config.DURATION, offset=config.AUDIO_OFFSET)
+    except Exception as e:
+        logger.error(f"Failed to load {path}: {e}")
+        return np.array([])
+    
     res1 = extract_features(data, sr)
     feature_list = [res1]
 
     if config.AUGMENT_NOISE:
-        noise_data = add_noise(data.copy())
+        noise_data = add_noise(data)
         res2 = extract_features(noise_data, sr)
         feature_list.append(res2)
         
@@ -61,7 +67,6 @@ def get_features(path):
         feature_list.append(res3)
     
     return np.array(feature_list)
-
 
 def load_data(data_dir=config.DATA_PATH):
     x, y = [], []
@@ -76,27 +81,34 @@ def load_data(data_dir=config.DATA_PATH):
     missing_emotions = 0
     processed_count = 0
     
-    for file in tqdm(files):
-        file_name = os.path.basename(file)
-        parts = file_name.split("-")
-        
-        if len(parts) < 3:
-            logger.debug(f"Skipping malformed filename: {file_name}")
-            continue
+    for file in tqdm(files, desc="Extracting features"):
+        try:
+            file_name = os.path.basename(file)
+            parts = file_name.split("-")
             
-        emotion_code = parts[2]
-        if emotion_code not in config.OBSERVED_EMOTIONS:
-            missing_emotions += 1
-            continue
+            if len(parts) < 3:
+                logger.debug(f"Skipping malformed filename: {file_name}")
+                continue
+                
+            emotion_code = parts[2]
+            if emotion_code not in config.OBSERVED_EMOTIONS:
+                missing_emotions += 1
+                continue
+                
+            emotion = config.OBSERVED_EMOTIONS[emotion_code]
+            processed_count += 1
             
-        emotion = config.OBSERVED_EMOTIONS[emotion_code]
-        processed_count += 1
-        
-        features = get_features(file)
-        
-        for feature in features:
-            x.append(feature)
-            y.append(emotion)
+            features = get_features(file)
+            
+            if features.size == 0:
+                continue
+            
+            for feature in features:
+                x.append(feature)
+                y.append(emotion)
+        except Exception as e:
+            logger.warning(f"Error processing {file}: {e}")
+            continue
             
     x_arr = np.array(x)
     y_arr = np.array(y)
@@ -118,14 +130,3 @@ def load_data(data_dir=config.DATA_PATH):
 
 if __name__ == "__main__":
     pass
-
-
-
-
-    
-
-    
-    
-
-
-

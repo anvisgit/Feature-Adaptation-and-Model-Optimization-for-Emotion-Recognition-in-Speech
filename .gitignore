@@ -1,0 +1,30 @@
+# Virtual Environment
+venv/
+env/
+.env
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Data and Artifacts (generated properties)
+processed_data/
+results/
+logs/
+models/*.h5
+models/*.npy
+models/*.pkl
+# Keep the final model results JSON if desired, or ignore all
+# models/all_model_results.json
+
+# Visualizations (generated)
+visualizations/
+
+# IDE settings
+.vscode/
+.idea/
+
+# System
+thumbs.db
+Desktop.ini

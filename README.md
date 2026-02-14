@@ -1,10 +1,5 @@
 # Speech Emotion Recognition — RAVDESS Dataset
 
-## Model Architecture
-
-**Multi-Branch 1D-CNN Fusion Network** — Three parallel convolutional branches process MFCC (40), Mel Spectrogram (128), and Chroma (12) features independently, then fuse via learned concatenation for 8-class emotion classification.
-
----
 
 ## Results
 

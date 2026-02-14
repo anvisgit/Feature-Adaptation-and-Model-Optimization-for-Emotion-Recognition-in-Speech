@@ -28,3 +28,5 @@ visualizations/
 # System
 thumbs.db
 Desktop.ini
+myenv/
+*.wav

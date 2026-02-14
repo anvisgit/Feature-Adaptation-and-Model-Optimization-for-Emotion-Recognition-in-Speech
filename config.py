@@ -18,30 +18,34 @@ ID_TO_EMOTION = {v: k for k, v in EMOTION_TO_ID.items()}
 EMOTION_NAMES = ['Neutral', 'Calm', 'Happy', 'Sad', 'Angry', 'Fearful', 'Disgust', 'Surprised']
 
 SAMPLE_RATE = 16000
+N_MFCC = 40
 N_MELS = 128
 N_FFT = 2048
 HOP_LENGTH = 512
-AUDIO_DURATION = 3.0
+AUDIO_DURATION = 4.0
+
+MEL_IMG_SIZE = 224
 
 N_FOLDS = 5
-N_EPOCHS = 200
+N_EPOCHS = 80
 BATCH_SIZE = 32
 LEARNING_RATE = 0.001
 RANDOM_SEED = 42
-PATIENCE = 30
+PATIENCE = 15
 
 AUGMENTATION = {
-    'noise_factor': 0.005,
-    'pitch_steps': 2,
-    'speed_range': (0.85, 1.15),
-    'num_audio_augments': 4
+    'noiseFactor': 0.005,
+    'pitchSteps': 2,
+    'speedRange': (0.85, 1.15),
+    'numAudioAugments': 4
 }
 
 FEATURE_PARAMS = {
     'mfcc': {'nmfcc': 40, 'nfft': 2048, 'hop': 512},
     'mel': {'nmels': 128, 'nfft': 2048, 'hop': 512},
-    'gauss': {'window': 25, 'nfft': 2048, 'filters': 64}
+    'gauss': {'window': 25, 'nfft': 2048, 'filters': 64},
+    'mel2d': {'nmels': 128, 'nfft': 2048, 'hop': 512, 'imgSize': MEL_IMG_SIZE},
+    'multi': {'nmfcc': 40, 'nmels': 128, 'nfft': 2048, 'hop': 512}
 }
 
-MIXUP_ALPHA = 0.3
-LABEL_SMOOTHING = 0.1
+MIXUP_ALPHA = 0.2

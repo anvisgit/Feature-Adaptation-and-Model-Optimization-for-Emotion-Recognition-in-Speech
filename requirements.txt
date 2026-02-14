@@ -1,7 +1,9 @@
-tensorflow
-librosa
-scikit-learn
-matplotlib
-seaborn
-pandas
-scipy
+tensorflow==2.15.0
+numpy==1.26.4
+librosa==0.10.1
+scikit-learn==1.4.0
+matplotlib==3.8.2
+seaborn==0.13.2
+pandas==2.2.0
+scipy==1.11.4
+opencv-python-headless==4.9.0.80

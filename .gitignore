@@ -18,8 +18,8 @@ models/*.pkl
 # Keep the final model results JSON if desired, or ignore all
 # models/all_model_results.json
 
-# Visualizations (generated)
-visualizations/
+# Visualizations - tracked for README display
+# visualizations/
 
 # IDE settings
 .vscode/

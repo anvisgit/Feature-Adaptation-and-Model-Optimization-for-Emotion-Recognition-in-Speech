@@ -1,116 +1,82 @@
-# Speech Emotion Recognition (SER) on RAVDESS Dataset
+# Speech Emotion Recognition — RAVDESS Dataset
 
-## 📌 Project Overview
-This project implements a robust deep learning pipeline for **Speech Emotion Recognition (SER)** using the **RAVDESS** (Ryerson Audio-Visual Database of Emotional Speech and Song) dataset. The system classifies audio recordings into 8 distinct emotional categories: *Neutral, Calm, Happy, Sad, Angry, Fearful, Disgust, and Surprised*.
+## Model Architecture
 
-The core objective is to achieve high accuracy (>84%) by leveraging advanced feature extraction techniques, data augmentation, and state-of-the-art neural network architectures.
-
----
-
-## 🛠️ Technical Architecture
-
-### 1. Feature Extraction Pipeline
-Raw audio is not directly fed into models. We extract three types of acoustic features to capture different aspects of speech:
-
-*   **MFCCs (Mel-Frequency Cepstral Coefficients):** 
-    *   *What it is:* A representation of the short-term power spectrum of sound, based on a linear cosine transform of a log power spectrum on a nonlinear mel scale of frequency.
-    *   *Why use it:* It effectively mimicks the human ear's perception of sound, focusing on frequencies (like speech formants) that carry linguistic and emotional content while filtering out noise.
-    *   *Configuration:* 40 coefficients, FFT window size 2048, Hop length 512.
-
-*   **Mel-Spectrograms:**
-    *   *What it is:* A spectrogram where the frequencies are converted to the Mel scale. It essentially treats audio as an image where the X-axis is time, Y-axis is frequency (mel-scaled), and color is amplitude (decibels).
-    *   *Why use it:* Provides a rich, time-frequency representation that allows Convolutional Neural Networks (CNNs) to learn patterns (like rising pitch in anger vs. falling pitch in sadness) just like they process images.
-    *   *Configuration:* 128 Mel bands.
-
-*   **Gaussian Filterbank Features:**
-    *   *What it is:* Features derived by applying Gaussian filters to the power spectrum, followed by a Discrete Cosine Transform (DCT).
-    *   *Why use it:* A specialized feature set that can capture spectral envelope characteristics often missed by standard MFCCs.
-
-*   **Statistical Functionals (For MLP):**
-    *   Since Multi-Layer Perceptrons (MLPs) cannot handle variable-length sequences well, we condense the time-series data into a fixed-size vector by computing 13 statistical moments per feature (e.g., Mean, Std Dev, Max, Min, Skewness, Kurtosis, Percentiles). This results in a comprehensive "global" summary of the emotion in the clip.
-
-### 2. Data Augmentation (Addressing Small Data)
-RAVDESS is a small dataset (~1440 samples). Deep learning models are prone to overfitting on small data. We solve this using **4x Audio-Domain Augmentation**:
-For every training fold, we create 4 altered copies of each sample on the fly:
-*   **Time Stretching:** Speeding up or slowing down speech (0.8x - 1.2x) without changing pitch.
-*   **Pitch Shifting:** Raising or lowering the pitch (±2 semitones) without changing speed.
-*   **Additive Noise:** Injecting low-level Gaussian noise to make the model robust to imperfect recording conditions.
-
-> **Why this matters:** This artificially expands our training set from ~1100 to ~5500 samples per fold, forcing the model to learn the *concept* of an emotion rather than memorizing the specific raw audio files.
+**Multi-Branch 1D-CNN Fusion Network** — Three parallel convolutional branches process MFCC (40), Mel Spectrogram (128), and Chroma (12) features independently, then fuse via learned concatenation for 8-class emotion classification.
 
 ---
 
-## 🧠 Model Architectures
+## Results
 
-We implemented and compared four distinct deep learning architectures:
+| Metric | Value |
+|--------|-------|
+| **Mean Accuracy** | **73.40%** |
+| **Mean F1 Score** | **72.98%** |
+| **Std Deviation** | ±3.92% |
+| **Evaluation** | 5-Fold StratifiedKFold |
 
-### 1. CNN-1D (Convolutional Neural Network)
-*   **Concept:** Adapts image recognition principles to audio. It slides 1-dimensional filters over the time axis of the MFCC/Mel-spectrogram sequence.
-*   **Key Innovation:** Uses **Residual Blocks** (ResNet style). Each block has a "shortcut connection" that allows gradients to flow through the network easily, preventing the "vanishing gradient" problem and allowing us to train deeper networks effectively.
-*   **Structure:** 
-    *   Input -> Conv1D -> Residual Blocks -> Global Average & Max Pooling -> Dense -> Softmax.
-    *   **Pooling:** We use both *Global Average* and *Global Max* pooling concatenated together to capture both the *average* emotional tone and the *peak* emotional intensity.
+### Per-Fold Accuracy
 
-### 2. LSTM (Long Short-Term Memory)
-*   **Concept:** A type of Recurrent Neural Network (RNN) designed for sequential data. It has "memory cells" that can maintain context over time.
-*   **Key Innovation:** **Bidirectional Processing**. The model processes the audio from start-to-end AND end-to-start simultaneously. This means at any point in time, the network knows what was said before *and* what is coming next, providing full context.
-*   **Structure:** 2 Bidirectional LSTM layers followed by Dense layers.
-
-### 3. Hybrid Model (CNN + LSTM)
-*   **Concept:** Best of both worlds. 
-*   **How it works:** The CNN layers act as a feature extractor, identifying local patterns (like a sharp intake of breath) in the spectrogram. The output of the CNN is then fed into an LSTM to understand how these patterns evolve over time.
-*   **Why:** CNNs are fast and good at local features; LSTMs are good at long-term temporal dependencies.
-
-### 4. MLP (Multi-Layer Perceptron)
-*   **Concept:** A classic feed-forward neural network.
-*   **Input:** The "Statistical Functionals" vector described above (global statistics).
-*   **Use Case:** Serves as a strong baseline to compare against the sequence models (CNN/LSTM). If the temporal models don't outperform the MLP, it means the sequence information isn't being used effectively.
+| Fold 1 | Fold 2 | Fold 3 | Fold 4 | Fold 5 |
+|--------|--------|--------|--------|--------|
+| 66.67% | 73.96% | 72.92% | 74.65% | 78.82% |
 
 ---
 
-## 🔬 Training Strategy
+## Visualizations
 
-### Cross-Validation
-*   **Method:** **5-Fold Stratified Cross-Validation**.
-*   **Why:** Instead of a single train/test split, we rotate the data so every sample is used for both training and testing. "Stratified" ensures each fold has the same percentage of each emotion (e.g., 15% Happy, 15% Sad) to preventing bias.
+### Pre-Training Analysis
 
-### Regularization Techniques (Preventing Overfitting)
-1.  **Mixup:** A state-of-the-art technique where we train on linear combinations of pairs of examples and their labels. Instead of telling the model "This is Happy", we generate a sample that is "70% Happy + 30% Sad" and force the model to predict that ratio. This leads to smoother decision boundaries.
-2.  **Label Smoothing:** Instead of targeting strict 0 or 1 labels (which causes overconfidence), we target 0.1 and 0.9. This prevents the model from becoming too arrogant about its predictions.
-3.  **Early Stopping:** Monitoring validation accuracy. If the model stops improving for 30 epochs, we stop training and revert to the best weights.
-4.  **ReduceLROnPlateau:** If learning stalls, we automatically reduce the learning rate by half to fine-tune the weights.
+#### 1. Audio Features Analysis
+> Waveform, Mel spectrogram, and MFCC heatmap for Sad, Angry, Fearful, and Surprised emotions.
+
+![Audio Features Analysis](visualizations/01_audio_features_analysis.png)
+
+#### 2. Spectrogram Comparison
+> Mel spectrogram comparison across all 8 emotions — visualizing acoustic differences in frequency and energy patterns.
+
+![Spectrogram Comparison](visualizations/02_spectrogram_comparison.png)
+
+#### 3. Pitch & Energy Contours
+> Fundamental frequency (F0) and RMS energy contours overlaid for all emotions — key prosodic features for SER.
+
+![Pitch Energy Contours](visualizations/03_pitch_energy_contours.png)
+
+#### 4. MFCC Feature Correlation
+> Mean MFCC coefficient values per emotion and inter-emotion correlation matrix — shows which emotions share similar spectral characteristics.
+
+![Feature Correlation](visualizations/04_feature_correlation.png)
+
+#### 5. Chromagram Comparison
+> Tonal content (chroma features) across selected emotions — captures harmonic and pitch class information.
+
+![Chroma Comparison](visualizations/05_chroma_comparison.png)
+
+#### 6. t-SNE Dimensionality Reduction
+> 2D projection of the combined MFCC + Mel + Chroma feature space — reveals natural clustering and overlap between emotion classes.
+
+![t-SNE](visualizations/06_tsne_dimensionality_reduction.png)
 
 ---
 
-## 📊 Performance & Evaluation
-*   **Primary Metric:** **Accuracy** (Percentage of correct predictions).
-*   **Secondary Metric:** **F1-Score** (Weighted average of Precision and Recall, crucial if classes are imbalanced).
-*   **Confusion Matrix:** Shows exactly which emotions are being confused (e.g., distinguishing "Anger" vs "Disgust" is often difficult).
+### Post-Training Analysis
 
----
+#### 7. Training History
+> Loss and accuracy curves across epochs with best epoch markers — monitors convergence and overfitting.
 
-## 🚀 How to Run
+![Training History](visualizations/07_training_history.png)
 
-1.  **Install Dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
-2.  **Dataset:** Ensure RAVDESS `Actor_*` folders are in the project root.
-3.  **Train Models:**
-    ```bash
-    python train.py
-    ```
-    *This runs the full 5-fold CV for all models and features. It may take several hours.*
-4.  **Visualize Results:**
-    ```bash
-    python viz.py
-    ```
-    *Generates plots in the `visualizations/` directory.*
+#### 8. Confusion Matrix
+> Raw count and normalized confusion matrices — identifies systematic misclassification patterns between emotion pairs.
 
-## 📁 Project Structure
-*   `config.py`: Global settings (sample rate, FFT size, learning rate).
-*   `data_preprocessing.py`: Handles loading, augmentation, and feature normalization.
-*   `features.py`: Implementations of MFCC, Mel-Spec, and Gauss extraction.
-*   `model.py`: TensorFlow/Keras definitions of CNN, LSTM, Hybrid, MLP.
-*   `train.py`: Main training loop with Cross-Validation and logging.
-*   `viz.py`: Generates confusion matrices, loss curves, and dataset stats.
+![Confusion Matrix](visualizations/08_confusion_matrix.png)
+
+#### 9. ROC Curves
+> One-vs-Rest ROC curves with per-class AUC scores — evaluates sensitivity/specificity trade-off for each emotion.
+
+![ROC Curves](visualizations/09_roc_curves.png)
+
+#### 10. Per-Emotion Performance
+> Precision, Recall, and F1-Score breakdown for each emotion — highlights class-level strengths and weaknesses.
+
+![Per-Emotion Performance](visualizations/10_per_emotion_performance.png)

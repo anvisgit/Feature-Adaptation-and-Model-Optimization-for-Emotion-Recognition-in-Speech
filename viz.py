@@ -242,9 +242,9 @@ def plotDimensionalityReduction():
     from data_preprocessing import loadDataMulti
 
     try:
-        xMulti, y, _ = loadDataMulti(
+        xMulti, y, _, _ = loadDataMulti(
             config.DATASET_PATH, config.EMOTION_TO_ID,
-            nmfcc=40, nmels=128, nfft=2048, hop=512
+            nmfcc=40, nmels=128, nfft=2048, hop=512, ntecc=40
         )
     except Exception as e:
         logger.error(f"t-SNE data load failed: {e}")
@@ -253,7 +253,8 @@ def plotDimensionalityReduction():
     xMfccMean = np.mean(xMulti[0], axis=1)
     xMelMean = np.mean(xMulti[1], axis=1)
     xChromaMean = np.mean(xMulti[2], axis=1)
-    xCombined = np.concatenate([xMfccMean, xMelMean, xChromaMean], axis=1)
+    xTeccMean = np.mean(xMulti[3], axis=1)
+    xCombined = np.concatenate([xMfccMean, xMelMean, xChromaMean, xTeccMean], axis=1)
 
     tsne = TSNE(n_components=2, random_state=42, perplexity=30, n_iter=1000)
     xEmbedded = tsne.fit_transform(xCombined)
@@ -264,7 +265,7 @@ def plotDimensionalityReduction():
         ax.scatter(xEmbedded[mask, 0], xEmbedded[mask, 1],
                    c=[emotionColors[emId]], label=emotionNames[emId],
                    alpha=0.65, s=40, edgecolors='white', linewidths=0.3)
-    ax.set_title('t-SNE of Multi-Feature Space (MFCC + Mel + Chroma)', fontsize=15)
+    ax.set_title('t-SNE of Multi-Feature Space (MFCC + Mel + Chroma + TECC)', fontsize=15)
     ax.set_xlabel('t-SNE 1')
     ax.set_ylabel('t-SNE 2')
     ax.legend(loc='best', framealpha=0.9, fontsize=11)
@@ -276,7 +277,7 @@ def plotDimensionalityReduction():
 
 def plotTrainingHistory():
     logger.info("Generating training history")
-    historyPath = os.path.join(modelDir, 'multi_multibranch_history.pkl')
+    historyPath = os.path.join(modelDir, 'bestHistory.pkl')
     if not os.path.exists(historyPath):
         logger.warning("History file not found")
         return
@@ -324,8 +325,8 @@ def plotTrainingHistory():
 
 def plotConfusionMatrix():
     logger.info("Generating confusion matrix")
-    yTruePath = os.path.join(modelDir, 'multi_multibranch_ytrue.npy')
-    yPredPath = os.path.join(modelDir, 'multi_multibranch_ypred.npy')
+    yTruePath = os.path.join(modelDir, 'fusion_multibranch_advYtrue.npy')
+    yPredPath = os.path.join(modelDir, 'fusion_multibranch_advYpred.npy')
     if not os.path.exists(yTruePath) or not os.path.exists(yPredPath):
         logger.warning("Prediction files not found")
         return
@@ -359,8 +360,8 @@ def plotConfusionMatrix():
 
 def plotRocCurves():
     logger.info("Generating ROC curves")
-    yTruePath = os.path.join(modelDir, 'multi_multibranch_ytrue.npy')
-    yProbPath = os.path.join(modelDir, 'multi_multibranch_probs.npy')
+    yTruePath = os.path.join(modelDir, 'fusion_multibranch_advYtrue.npy')
+    yProbPath = os.path.join(modelDir, 'fusion_multibranch_advProbs.npy')
     if not os.path.exists(yTruePath) or not os.path.exists(yProbPath):
         logger.warning("Probability files not found")
         return
@@ -396,8 +397,8 @@ def plotRocCurves():
 
 def plotPerEmotionPerformance():
     logger.info("Generating per-emotion metrics")
-    yTruePath = os.path.join(modelDir, 'multi_multibranch_ytrue.npy')
-    yPredPath = os.path.join(modelDir, 'multi_multibranch_ypred.npy')
+    yTruePath = os.path.join(modelDir, 'fusion_multibranch_advYtrue.npy')
+    yPredPath = os.path.join(modelDir, 'fusion_multibranch_advYpred.npy')
     if not os.path.exists(yTruePath) or not os.path.exists(yPredPath):
         logger.warning("Prediction files not found")
         return

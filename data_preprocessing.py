@@ -33,40 +33,35 @@ def loadDataset(path):
     return df
 
 def augmentAudio(audio, sr):
-    logger.debug("Applying audio augmentation")
     augmented = audio.copy()
-    applied = False
 
-    if np.random.rand() < 0.7:
-        logger.debug("Applying additive noise augmentation")
+    if np.random.rand() < 0.6:
         noise = np.random.randn(len(augmented))
         augmented = augmented + AUGMENTATION['noiseFactor'] * noise
-        applied = True
 
-    if np.random.rand() < 0.7:
-        nSteps = np.random.uniform(-AUGMENTATION['pitchSteps'], AUGMENTATION['pitchSteps'])
-        logger.debug(f"Applying pitch shift by {nSteps:.2f} semitones")
+    if np.random.rand() < 0.6:
+        nSteps = np.random.uniform(-1.5, 1.5)
         augmented = librosa.effects.pitch_shift(augmented, sr=sr, n_steps=nSteps)
-        applied = True
 
-    if np.random.rand() < 0.7:
-        speed = np.random.uniform(AUGMENTATION['speedRange'][0], AUGMENTATION['speedRange'][1])
-        logger.debug(f"Applying time stretch at rate {speed:.2f}")
+    if np.random.rand() < 0.6:
+        speed = np.random.uniform(0.9, 1.1)
         augmented = librosa.effects.time_stretch(augmented, rate=speed)
-        applied = True
 
-    if not applied:
-        logger.debug("No augmentation randomly selected, forcing noise injection")
-        noise = np.random.randn(len(augmented))
-        augmented = augmented + AUGMENTATION['noiseFactor'] * noise
+    if np.random.rand() < 0.4:
+        vtlpFactor = np.random.uniform(0.9, 1.1)
+        stft = librosa.stft(augmented, n_fft=N_FFT, hop_length=HOP_LENGTH)
+        freqs = np.linspace(0, 1, stft.shape[0])
+        warpedFreqs = freqs ** vtlpFactor
+        warpedFreqs = np.clip(warpedFreqs * (stft.shape[0] - 1), 0, stft.shape[0] - 1).astype(int)
+        warpedStft = stft[warpedFreqs, :]
+        augmented = librosa.istft(warpedStft, hop_length=HOP_LENGTH, length=len(augmented))
 
     return augmented
 
-def loadDataMulti(path, emotions, nmfcc=40, nmels=128, nfft=2048, hop=512):
-    xMfcc, xMel, xChroma, y, audios = [], [], [], [], []
-    logger.info(f"Loading multi-feature data: MFCC({nmfcc}) + Mel({nmels}) + Chroma(12)")
+def loadDataMulti(path, emotions, nmfcc=40, nmels=128, nfft=2048, hop=512, ntecc=40):
+    xMfcc, xMel, xChroma, xTecc, y, audios, actorIds = [], [], [], [], [], [], []
+    logger.info(f"Loading multi-feature data: MFCC({nmfcc}+d) + Mel({nmels}) + Chroma(12+d) + TECC({ntecc}+d)")
     targetLen = int(SAMPLE_RATE * AUDIO_DURATION)
-    logger.info(f"Target audio length {targetLen} samples at {SAMPLE_RATE}Hz for {AUDIO_DURATION}s")
     for subdir, dirs, fs in os.walk(path):
         for f in fs:
             if f.endswith('.wav'):
@@ -80,46 +75,69 @@ def loadDataMulti(path, emotions, nmfcc=40, nmels=128, nfft=2048, hop=512):
                             audio = np.pad(audio, (0, targetLen - len(audio)))
                         else:
                             audio = audio[:targetLen]
-                        mfcc, mel, chroma = extractMultiFeature(audio, sr, nmfcc, nmels, nfft, hop)
+                        mfcc, mel, chroma, tecc = extractMultiFeature(audio, sr, nmfcc, nmels, nfft, hop, ntecc)
                         xMfcc.append(mfcc)
                         xMel.append(mel)
                         xChroma.append(chroma)
+                        xTecc.append(tecc)
                         y.append(emotions[p[2]])
                         audios.append(audio)
+                        actorIds.append(int(p[-1]))
                     except Exception as e:
                         logger.error(f"Error processing {filepath}: {e}")
-    xMfccArr = np.array(xMfcc, dtype=np.float32)
-    xMelArr = np.array(xMel, dtype=np.float32)
-    xChromaArr = np.array(xChroma, dtype=np.float32)
-    yArr = np.array(y)
-    logger.info(f"Loaded multi-feature data: MFCC={xMfccArr.shape} Mel={xMelArr.shape} Chroma={xChromaArr.shape} y={yArr.shape}")
-    return [xMfccArr, xMelArr, xChromaArr], yArr, audios
+    
+    return [np.array(xMfcc, dtype=np.float32), 
+            np.array(xMel, dtype=np.float32), 
+            np.array(xChroma, dtype=np.float32),
+            np.array(xTecc, dtype=np.float32)], \
+           np.array(y), audios, np.array(actorIds)
 
-def augmentAudioBatchMulti(audios, labels, nmfcc=40, nmels=128, nfft=2048, hop=512, numAug=4):
-    logger.info(f"Performing multi-feature audio augmentation x{numAug} for {len(audios)} samples")
-    mfccAug, melAug, chromaAug, yAug = [], [], [], []
+def applySpecAugment(feat, numFreqMasks=2, numTimeMasks=2, freqMaskParam=None, timeMaskParam=10):
+    augFeat = feat.copy()
+    T, F = augFeat.shape
+    if freqMaskParam is None:
+        freqMaskParam = max(1, F // 5)
+    for _ in range(numFreqMasks):
+        fWidth = np.random.randint(1, min(freqMaskParam, F))
+        f0 = np.random.randint(0, max(1, F - fWidth))
+        augFeat[:, f0:f0 + fWidth] = 0
+    for _ in range(numTimeMasks):
+        tWidth = np.random.randint(1, min(timeMaskParam, T))
+        t0 = np.random.randint(0, max(1, T - tWidth))
+        augFeat[t0:t0 + tWidth, :] = 0
+    return augFeat
+
+def augmentAudioBatchMulti(audios, labels, nmfcc=40, nmels=128, nfft=2048, hop=512, ntecc=40, numAug=4):
+    mfccAug, melAug, chromaAug, teccAug, yAug = [], [], [], [], []
     targetLen = int(SAMPLE_RATE * AUDIO_DURATION)
+    neutralId = 0
     for i, audio in enumerate(audios):
-        for _ in range(numAug):
+        augCount = numAug * 2 if labels[i] == neutralId else numAug
+        for _ in range(augCount):
             try:
                 augAudio = augmentAudio(audio, SAMPLE_RATE)
                 if len(augAudio) < targetLen:
                     augAudio = np.pad(augAudio, (0, targetLen - len(augAudio)))
                 else:
                     augAudio = augAudio[:targetLen]
-                mfcc, mel, chroma = extractMultiFeature(augAudio, SAMPLE_RATE, nmfcc, nmels, nfft, hop)
+                mfcc, mel, chroma, tecc = extractMultiFeature(augAudio, SAMPLE_RATE, nmfcc, nmels, nfft, hop, ntecc)
+                if np.random.rand() < 0.5:
+                    mfcc = applySpecAugment(mfcc)
+                    mel = applySpecAugment(mel)
+                    chroma = applySpecAugment(chroma, freqMaskParam=6)
+                    tecc = applySpecAugment(tecc)
                 mfccAug.append(mfcc)
                 melAug.append(mel)
                 chromaAug.append(chroma)
+                teccAug.append(tecc)
                 yAug.append(labels[i])
             except Exception as e:
-                logger.error(f"Augmentation error for sample {i}: {e}")
-    logger.info(f"Multi-feature augmentation complete: generated {len(yAug)} augmented samples")
-    return [np.array(mfccAug, dtype=np.float32), np.array(melAug, dtype=np.float32), np.array(chromaAug, dtype=np.float32)], np.array(yAug)
+                logger.error(f"Augmentation error: {e}")
+    return [np.array(mfccAug, dtype=np.float32), np.array(melAug, dtype=np.float32),
+            np.array(chromaAug, dtype=np.float32), np.array(teccAug, dtype=np.float32)], np.array(yAug)
 
 def loadData(path, emotions, featType='mfcc', **featParams):
     x, y, audios, actorIds = [], [], [], []
-    logger.info(f"Loading data with feature type {featType}")
     targetLen = int(SAMPLE_RATE * AUDIO_DURATION)
     for subdir, dirs, fs in os.walk(path):
         for f in fs:
@@ -135,8 +153,7 @@ def loadData(path, emotions, featType='mfcc', **featParams):
                         else:
                             audio = audio[:targetLen]
                         audios.append(audio)
-                        actorId = int(p[-1])
-                        actorIds.append(actorId)
+                        actorIds.append(int(p[-1]))
                         if featType == 'mel2d':
                             feat = extractMelSpec2D(audio, sr, **featParams)
                             x.append(feat)
@@ -147,45 +164,4 @@ def loadData(path, emotions, featType='mfcc', **featParams):
                         y.append(emotions[p[2]])
                     except Exception as e:
                         logger.error(f"Error processing {filepath}: {e}")
-    xArr = np.array(x)
-    yArr = np.array(y)
-    actorIdsArr = np.array(actorIds)
-    logger.info(f"Loaded data X={xArr.shape} y={yArr.shape} uniqueActors={len(np.unique(actorIdsArr))}")
-    return xArr, yArr, audios, actorIdsArr
-
-def augmentAudioBatch(audios, labels, featType, featParams, numAug=4):
-    logger.info(f"Performing audio augmentation x{numAug} for {len(audios)} samples")
-    xAug, yAug = [], []
-    targetLen = int(SAMPLE_RATE * AUDIO_DURATION)
-    for i, audio in enumerate(audios):
-        for _ in range(numAug):
-            try:
-                augAudio = augmentAudio(audio, SAMPLE_RATE)
-                if len(augAudio) < targetLen:
-                    augAudio = np.pad(augAudio, (0, targetLen - len(augAudio)))
-                else:
-                    augAudio = augAudio[:targetLen]
-                if featType == 'mel2d':
-                    feat = extractMelSpec2D(augAudio, SAMPLE_RATE, **featParams)
-                    xAug.append(feat)
-                else:
-                    stat, delta, deltaDelta = extractFeatures(augAudio, SAMPLE_RATE, featType=featType, **featParams)
-                    feat = np.hstack((stat, delta, deltaDelta))
-                    xAug.append(feat)
-                yAug.append(labels[i])
-            except Exception as e:
-                logger.error(f"Augmentation error for sample {i}: {e}")
-    logger.info(f"Augmentation complete generated {len(xAug)} augmented samples")
-    return np.array(xAug), np.array(yAug)
-
-def preprocessForMlp(x3d):
-    logger.info("Extracting statistical functionals for MLP input")
-    xFlat = extractStatisticalFunctionals(x3d)
-    scaler = StandardScaler()
-    xScaled = scaler.fit_transform(xFlat)
-    logger.info(f"MLP feature shape {xScaled.shape}")
-    return xScaled, scaler
-
-def encodeLabels(y):
-    encoder = LabelEncoder()
-    return encoder.fit_transform(y), encoder
+    return np.array(x), np.array(y), audios, np.array(actorIds)

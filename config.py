@@ -27,11 +27,14 @@ AUDIO_DURATION = 4.0
 MEL_IMG_SIZE = 224
 
 N_FOLDS = 5
-N_EPOCHS = 80
-BATCH_SIZE = 32
-LEARNING_RATE = 0.001
+N_EPOCHS = 150
+BATCH_SIZE = 16
+LEARNING_RATE = 0.0005
 RANDOM_SEED = 42
 PATIENCE = 15
+
+FOCAL_GAMMA = 1.8
+FOCAL_ALPHA = 0.3
 
 AUGMENTATION = {
     'noiseFactor': 0.005,
@@ -45,7 +48,7 @@ FEATURE_PARAMS = {
     'mel': {'nmels': 128, 'nfft': 2048, 'hop': 512},
     'gauss': {'window': 25, 'nfft': 2048, 'filters': 64},
     'mel2d': {'nmels': 128, 'nfft': 2048, 'hop': 512, 'imgSize': MEL_IMG_SIZE},
-    'multi': {'nmfcc': 40, 'nmels': 128, 'nfft': 2048, 'hop': 512}
+    'multi': {'nmfcc': 40, 'nmels': 128, 'nfft': 2048, 'hop': 512, 'ntecc': 40}
 }
 
 MIXUP_ALPHA = 0.2

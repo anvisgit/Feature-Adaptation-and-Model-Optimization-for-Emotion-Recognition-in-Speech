@@ -16,17 +16,17 @@ def teagerEnergyOperator(signal):
     te[1:-1] = signal[1:-1]**2 - signal[2:] * signal[:-2]
     return te
 
-def computeCepstralFeatures(signal, sr, nCepstral):
+def computeCepstralFeatures(signal, sr, nCepstral, nfft=2048, hop=512):
     logger.debug(f"Computing cepstral features with {nCepstral} coefficients")
-    melSpec = librosa.feature.melspectrogram(y=signal, sr=sr, n_mels=40)
+    melSpec = librosa.feature.melspectrogram(y=signal, sr=sr, n_mels=40, n_fft=nfft, hop_length=hop)
     logPowerSpectrum = np.log(np.maximum(melSpec, 1e-10))
-    cepstralFeatures = dct(logPowerSpectrum, type=2, axis=-1, norm='ortho')[:nCepstral]
+    cepstralFeatures = dct(logPowerSpectrum, type=2, axis=0, norm='ortho')[:nCepstral]
     return cepstralFeatures
 
-def extractTeagerEnergyCepstralFeatures(y, sr, nCepstral=13):
+def extractTeagerEnergyCepstralFeatures(y, sr, nCepstral=40, nfft=2048, hop=512):
     logger.debug("Extracting TECC features")
     teagerEnergy = teagerEnergyOperator(y)
-    teccStatic = computeCepstralFeatures(teagerEnergy, sr, nCepstral)
+    teccStatic = computeCepstralFeatures(teagerEnergy, sr, nCepstral, nfft, hop)
     teccDelta = librosa.feature.delta(teccStatic, order=1)
     teccDeltaDelta = librosa.feature.delta(teccStatic, order=2)
     return teccStatic.T, teccDelta.T, teccDeltaDelta.T
@@ -88,14 +88,31 @@ def extractChroma(audio, sr, nfft=2048, hop=512):
     chroma = librosa.feature.chroma_stft(y=audio, sr=sr, n_fft=nfft, hop_length=hop)
     return chroma.T
 
-def extractMultiFeature(audio, sr, nmfcc=40, nmels=128, nfft=2048, hop=512):
-    logger.debug(f"Extracting multi-feature set: MFCC({nmfcc}) + Mel({nmels}) + Chroma(12)")
+def extractMultiFeature(audio, sr, nmfcc=40, nmels=128, nfft=2048, hop=512, ntecc=40):
+    logger.debug(f"Extracting multi-feature set: MFCC({nmfcc}+deltas) + Mel({nmels}) + Chroma(12+deltas) + TECC({ntecc}+deltas)")
+
     mfcc = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=nmfcc, n_fft=nfft, hop_length=hop)
+    mfccDelta = librosa.feature.delta(mfcc, order=1)
+    mfccDelta2 = librosa.feature.delta(mfcc, order=2)
+    mfccFull = np.concatenate([mfcc, mfccDelta, mfccDelta2], axis=0).T
+
     mel = librosa.feature.melspectrogram(y=audio, sr=sr, n_mels=nmels, n_fft=nfft, hop_length=hop)
     melDb = librosa.power_to_db(mel, ref=np.max)
+    melFull = melDb.T
+
     chroma = librosa.feature.chroma_stft(y=audio, sr=sr, n_fft=nfft, hop_length=hop)
-    logger.debug(f"Multi-feature shapes: MFCC={mfcc.T.shape} Mel={melDb.T.shape} Chroma={chroma.T.shape}")
-    return mfcc.T, melDb.T, chroma.T
+    chromaDelta = librosa.feature.delta(chroma, order=1)
+    chromaDelta2 = librosa.feature.delta(chroma, order=2)
+    chromaFull = np.concatenate([chroma, chromaDelta, chromaDelta2], axis=0).T
+
+    teagerEnergy = teagerEnergyOperator(audio)
+    teccStatic = computeCepstralFeatures(teagerEnergy, sr, ntecc, nfft, hop)
+    teccDelta = librosa.feature.delta(teccStatic, order=1)
+    teccDelta2 = librosa.feature.delta(teccStatic, order=2)
+    teccFull = np.concatenate([teccStatic, teccDelta, teccDelta2], axis=0).T
+
+    logger.debug(f"Multi-feature shapes: MFCC={mfccFull.shape} Mel={melFull.shape} Chroma={chromaFull.shape} TECC={teccFull.shape}")
+    return mfccFull, melFull, chromaFull, teccFull
 
 def extractFeatures(audio, sr, featType='mfcc', **kwargs):
     logger.debug(f"Extracting features type={featType}")
@@ -110,7 +127,7 @@ def extractFeatures(audio, sr, featType='mfcc', **kwargs):
     elif featType == 'mel2d':
         return extractMelSpec2D(audio, sr, kwargs.get('nmels', 128), kwargs.get('nfft', 2048), kwargs.get('hop', 512), kwargs.get('imgSize', 224))
     elif featType == 'multi':
-        return extractMultiFeature(audio, sr, kwargs.get('nmfcc', 40), kwargs.get('nmels', 128), kwargs.get('nfft', 2048), kwargs.get('hop', 512))
+        return extractMultiFeature(audio, sr, kwargs.get('nmfcc', 40), kwargs.get('nmels', 128), kwargs.get('nfft', 2048), kwargs.get('hop', 512), kwargs.get('ntecc', 40))
     else:
         raise ValueError(f"Unknown feature type: {featType}")
 
